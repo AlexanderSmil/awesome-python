@@ -19,6 +19,11 @@ README_PATH = Path(__file__).parent.parent / "README.md"
 GRAPHQL_URL = "https://api.github.com/graphql"
 BATCH_SIZE = 50
 
+# GitHub usernames: alphanumeric and hyphens, must start/end with alphanumeric.
+GITHUB_OWNER_RE = re.compile(r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$")
+# GitHub repo names: alphanumeric, hyphens, underscores, dots, must start with alphanumeric.
+GITHUB_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+
 
 def extract_github_repos(text: str) -> set[str]:
     """Extract unique owner/repo pairs from GitHub URLs in markdown text."""
@@ -46,7 +51,7 @@ def build_graphql_query(repos: list[str]) -> str:
     parts = []
     for i, repo in enumerate(repos):
         owner, name = repo.split("/", 1)
-        if '"' in owner or '"' in name:
+        if not GITHUB_OWNER_RE.match(owner) or not GITHUB_NAME_RE.match(name):
             continue
         parts.append(
             f'repo_{i}: repository(owner: "{owner}", name: "{name}") '
@@ -103,6 +108,7 @@ def main() -> None:
 
     readme_text = README_PATH.read_text(encoding="utf-8")
     current_repos = extract_github_repos(readme_text)
+    current_repos.add("vinta/awesome-python")
     print(f"Found {len(current_repos)} GitHub repos in README.md")
 
     cache = load_stars(CACHE_FILE)

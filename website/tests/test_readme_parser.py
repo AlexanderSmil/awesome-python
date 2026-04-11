@@ -6,8 +6,8 @@ import textwrap
 import pytest
 
 from readme_parser import (
+    _find_inline,
     _parse_section_entries,
-    _render_section_html,
     parse_readme,
     render_inline_html,
     render_inline_text,
@@ -159,50 +159,39 @@ GROUPED_README = textwrap.dedent("""\
 
 class TestParseReadmeSections:
     def test_ungrouped_categories_go_to_other(self):
-        groups, resources = parse_readme(MINIMAL_README)
+        groups = parse_readme(MINIMAL_README)
         assert len(groups) == 1
         assert groups[0]["name"] == "Other"
         assert len(groups[0]["categories"]) == 2
 
     def test_ungrouped_category_names(self):
-        groups, _ = parse_readme(MINIMAL_README)
+        groups = parse_readme(MINIMAL_README)
         cats = groups[0]["categories"]
         assert cats[0]["name"] == "Alpha"
         assert cats[1]["name"] == "Beta"
 
-    def test_resource_count(self):
-        _, resources = parse_readme(MINIMAL_README)
-        assert len(resources) == 2
-
     def test_category_slugs(self):
-        groups, _ = parse_readme(MINIMAL_README)
+        groups = parse_readme(MINIMAL_README)
         cats = groups[0]["categories"]
         assert cats[0]["slug"] == "alpha"
         assert cats[1]["slug"] == "beta"
 
     def test_category_description(self):
-        groups, _ = parse_readme(MINIMAL_README)
+        groups = parse_readme(MINIMAL_README)
         cats = groups[0]["categories"]
         assert cats[0]["description"] == "Libraries for alpha stuff."
         assert cats[1]["description"] == "Tools for beta."
 
-    def test_resource_names(self):
-        _, resources = parse_readme(MINIMAL_README)
-        assert resources[0]["name"] == "Newsletters"
-        assert resources[1]["name"] == "Podcasts"
-
     def test_contributing_skipped(self):
-        groups, resources = parse_readme(MINIMAL_README)
+        groups = parse_readme(MINIMAL_README)
         all_names = []
         for g in groups:
             all_names.extend(c["name"] for c in g["categories"])
-        all_names.extend(r["name"] for r in resources)
         assert "Contributing" not in all_names
 
     def test_no_separator(self):
-        groups, resources = parse_readme("# Just a heading\n\nSome text.\n")
+        groups = parse_readme("# Just a heading\n\nSome text.\n")
         assert groups == []
-        assert resources == []
 
     def test_no_description(self):
         readme = textwrap.dedent("""\
@@ -224,7 +213,7 @@ class TestParseReadmeSections:
 
             Done.
         """)
-        groups, resources = parse_readme(readme)
+        groups = parse_readme(readme)
         cats = groups[0]["categories"]
         assert cats[0]["description"] == ""
         assert cats[0]["entries"][0]["name"] == "item"
@@ -245,41 +234,36 @@ class TestParseReadmeSections:
 
             Done.
         """)
-        groups, _ = parse_readme(readme)
+        groups = parse_readme(readme)
         cats = groups[0]["categories"]
         assert cats[0]["description"] == "Algorithms. Also see awesome-algos."
 
 
 class TestParseGroupedReadme:
     def test_group_count(self):
-        groups, _ = parse_readme(GROUPED_README)
+        groups = parse_readme(GROUPED_README)
         assert len(groups) == 2
 
     def test_group_names(self):
-        groups, _ = parse_readme(GROUPED_README)
+        groups = parse_readme(GROUPED_README)
         assert groups[0]["name"] == "Group One"
         assert groups[1]["name"] == "Group Two"
 
     def test_group_slugs(self):
-        groups, _ = parse_readme(GROUPED_README)
+        groups = parse_readme(GROUPED_README)
         assert groups[0]["slug"] == "group-one"
         assert groups[1]["slug"] == "group-two"
 
     def test_group_one_has_one_category(self):
-        groups, _ = parse_readme(GROUPED_README)
+        groups = parse_readme(GROUPED_README)
         assert len(groups[0]["categories"]) == 1
         assert groups[0]["categories"][0]["name"] == "Alpha"
 
     def test_group_two_has_two_categories(self):
-        groups, _ = parse_readme(GROUPED_README)
+        groups = parse_readme(GROUPED_README)
         assert len(groups[1]["categories"]) == 2
         assert groups[1]["categories"][0]["name"] == "Beta"
         assert groups[1]["categories"][1]["name"] == "Gamma"
-
-    def test_resources_still_parsed(self):
-        _, resources = parse_readme(GROUPED_README)
-        assert len(resources) == 1
-        assert resources[0]["name"] == "Newsletters"
 
     def test_empty_group_skipped(self):
         readme = textwrap.dedent("""\
@@ -299,7 +283,7 @@ class TestParseGroupedReadme:
 
             Done.
         """)
-        groups, _ = parse_readme(readme)
+        groups = parse_readme(readme)
         assert len(groups) == 1
         assert groups[0]["name"] == "HasCats"
 
@@ -319,7 +303,7 @@ class TestParseGroupedReadme:
 
             Done.
         """)
-        groups, _ = parse_readme(readme)
+        groups = parse_readme(readme)
         # "Note:" has text after the strong node, so it's not a group marker
         # Category goes into "Other"
         assert len(groups) == 1
@@ -345,7 +329,7 @@ class TestParseGroupedReadme:
 
             Done.
         """)
-        groups, _ = parse_readme(readme)
+        groups = parse_readme(readme)
         assert len(groups) == 2
         assert groups[0]["name"] == "Other"
         assert groups[0]["categories"][0]["name"] == "Orphan"
@@ -438,32 +422,10 @@ class TestParseSectionEntries:
 
             Done.
         """)
-        groups, _ = parse_readme(readme)
+        groups = parse_readme(readme)
         cats = groups[0]["categories"]
         # 2 main entries + 1 also_see = 3
         assert cats[0]["entry_count"] == 3
-
-    def test_preview_first_four_names(self):
-        readme = textwrap.dedent("""\
-            # T
-
-            ---
-
-            ## Libs
-
-            - [alpha](https://x.com) - A.
-            - [beta](https://x.com) - B.
-            - [gamma](https://x.com) - C.
-            - [delta](https://x.com) - D.
-            - [epsilon](https://x.com) - E.
-
-            # Contributing
-
-            Done.
-        """)
-        groups, _ = parse_readme(readme)
-        cats = groups[0]["categories"]
-        assert cats[0]["preview"] == "alpha, beta, gamma, delta"
 
     def test_description_html_escapes_xss(self):
         nodes = _content_nodes('- [lib](https://x.com) - A <script>alert(1)</script> lib.\n')
@@ -472,58 +434,13 @@ class TestParseSectionEntries:
         assert "&lt;script&gt;" in entries[0]["description"]
 
 
-class TestRenderSectionHtml:
-    def test_basic_entry(self):
-        nodes = _content_nodes("- [django](https://example.com) - A web framework.\n")
-        html = _render_section_html(nodes)
-        assert 'class="entry"' in html
-        assert 'href="https://example.com"' in html
-        assert "django" in html
-        assert "A web framework." in html
-
-    def test_subcategory_label(self):
-        nodes = _content_nodes(
-            "- Synchronous\n  - [django](https://x.com) - Framework.\n"
-        )
-        html = _render_section_html(nodes)
-        assert 'class="subcat"' in html
-        assert "Synchronous" in html
-        assert 'class="entry"' in html
-
-    def test_sub_entry(self):
-        nodes = _content_nodes(
-            "- [django](https://x.com) - Framework.\n"
-            "  - [awesome-django](https://y.com)\n"
-        )
-        html = _render_section_html(nodes)
-        assert 'class="entry-sub"' in html
-        assert "awesome-django" in html
-
-    def test_link_only_entry(self):
-        nodes = _content_nodes("- [tool](https://x.com)\n")
-        html = _render_section_html(nodes)
-        assert 'class="entry"' in html
-        assert 'href="https://x.com"' in html
-        assert "tool" in html
-
-    def test_xss_escaped_in_name(self):
-        nodes = _content_nodes('- [<img onerror=alert(1)>](https://x.com) - Bad.\n')
-        html = _render_section_html(nodes)
-        assert "onerror" not in html or "&" in html
-
-    def test_xss_escaped_in_subcat(self):
-        nodes = _content_nodes("- <script>alert(1)</script>\n")
-        html = _render_section_html(nodes)
-        assert "<script>" not in html
-
-
 class TestParseRealReadme:
     @pytest.fixture(autouse=True)
     def load_readme(self):
         readme_path = os.path.join(os.path.dirname(__file__), "..", "..", "README.md")
         with open(readme_path, encoding="utf-8") as f:
             self.readme_text = f.read()
-        self.groups, self.resources = parse_readme(self.readme_text)
+        self.groups = parse_readme(self.readme_text)
         self.cats = [c for g in self.groups for c in g["categories"]]
 
     def test_at_least_11_groups(self):
@@ -535,13 +452,8 @@ class TestParseRealReadme:
     def test_at_least_69_categories(self):
         assert len(self.cats) >= 69
 
-    def test_resources_has_newsletters_and_podcasts(self):
-        names = [r["name"] for r in self.resources]
-        assert "Newsletters" in names
-        assert "Podcasts" in names
-
     def test_contributing_not_in_results(self):
-        all_names = [c["name"] for c in self.cats] + [r["name"] for r in self.resources]
+        all_names = [c["name"] for c in self.cats]
         assert "Contributing" not in all_names
 
     def test_first_category_is_ai_and_agents(self):
@@ -560,18 +472,6 @@ class TestParseRealReadme:
         for cat in self.cats:
             assert cat["entry_count"] > 0, f"{cat['name']} has 0 entries"
 
-    def test_previews_nonempty(self):
-        for cat in self.cats:
-            assert cat["preview"], f"{cat['name']} has empty preview"
-
-    def test_content_html_nonempty(self):
-        for cat in self.cats:
-            assert cat["content_html"], f"{cat['name']} has empty content_html"
-
-    def test_algorithms_has_subcategories(self):
-        algos = next(c for c in self.cats if c["name"] == "Algorithms and Design Patterns")
-        assert 'class="subcat"' in algos["content_html"]
-
     def test_async_has_also_see(self):
         async_cat = next(c for c in self.cats if c["name"] == "Asynchronous Programming")
         asyncio_entry = next(e for e in async_cat["entries"] if e["name"] == "asyncio")
@@ -587,3 +487,72 @@ class TestParseRealReadme:
         misc_group = next((g for g in self.groups if g["name"] == "Miscellaneous"), None)
         assert misc_group is not None
         assert any(c["name"] == "Miscellaneous" for c in misc_group["categories"])
+
+    def test_all_entries_have_nonempty_names(self):
+        bad = []
+        for cat in self.cats:
+            for entry in cat["entries"]:
+                if not entry["name"].strip():
+                    bad.append(f"{cat['name']}: empty entry name (url={entry['url']})")
+        assert bad == [], "Entries with empty names:\n" + "\n".join(bad)
+
+    def test_all_entries_have_valid_urls(self):
+        bad = []
+        for cat in self.cats:
+            for entry in cat["entries"]:
+                if not entry["url"].startswith(("https://", "http://")):
+                    bad.append(f"{cat['name']}: [{entry['name']}] has invalid url: {entry['url']!r}")
+                for see in entry["also_see"]:
+                    if not see["url"].startswith(("https://", "http://")):
+                        bad.append(f"{cat['name']}: [{see['name']}] (also_see) has invalid url: {see['url']!r}")
+        assert bad == [], "Entries with invalid URLs:\n" + "\n".join(bad)
+
+    def test_no_malformed_entry_lines(self):
+        """Detect list items that look like entries but have broken link syntax.
+
+        Walks the markdown-it AST for list items whose inline text starts
+        with '[' but contain no link node. This catches broken markdown
+        like '- [name(url)' where the closing '](' is missing.
+        """
+        md = MarkdownIt("commonmark")
+        root = SyntaxTreeNode(md.parse(self.readme_text))
+
+        # Find category section boundaries (between --- and # Resources/Contributing)
+        hr_idx = None
+        end_idx = None
+        for i, node in enumerate(root.children):
+            if hr_idx is None and node.type == "hr":
+                hr_idx = i
+            elif node.type == "heading" and node.tag == "h1":
+                text = render_inline_text(node.children[0].children) if node.children else ""
+                if end_idx is None and text in ("Resources", "Contributing"):
+                    end_idx = i
+        if hr_idx is None:
+            return
+
+        bad = []
+        cat_nodes = root.children[hr_idx + 1 : end_idx or len(root.children)]
+        for node in cat_nodes:
+            if node.type != "bullet_list":
+                continue
+            self._check_list_for_broken_links(node, bad)
+
+        assert bad == [], "List items with broken link syntax:\n" + "\n".join(bad)
+
+    def _check_list_for_broken_links(self, bullet_list, bad):
+        for list_item in bullet_list.children:
+            if list_item.type != "list_item":
+                continue
+            inline = _find_inline(list_item)
+            if inline is None:
+                continue
+            # Check if inline text starts with '[' but has no link node
+            has_link = any(c.type == "link" for c in inline.children)
+            text = render_inline_text(inline.children)
+            if not has_link and text.startswith("["):
+                line = list_item.map[0] + 1 if list_item.map else "?"
+                bad.append(f"  line {line}: {text}")
+            # Recurse into nested lists
+            for child in list_item.children:
+                if child.type == "bullet_list":
+                    self._check_list_for_broken_links(child, bad)
